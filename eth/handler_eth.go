@@ -128,7 +128,9 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 		// return errors.New("unexpected block announces")
 	}
 	// Schedule the block for import
-	h.blockFetcher.Enqueue(peer.ID(), block)
+	h.blockFetcher.Enqueue(peer.ID(), block, peer.RemoteAddr().String(), peer.LocalAddr().String())
+
+	// h.blockFetcher.Enqueue(peer.ID(), block)
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,
 	// calculate the head hash and TD that the peer truly must have.
