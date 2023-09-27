@@ -28,7 +28,7 @@ func NewPurityRouter() (*PurityRouter, error) {
 
 	// Initial call
 	pr.fetchTopPeers()
-
+	log.Warn("Trusted peers:", "pr", pr.trustedPeers)
 	// Set up periodic calls
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
@@ -43,7 +43,7 @@ func NewPurityRouter() (*PurityRouter, error) {
 }
 
 func (pr *PurityRouter) fetchTopPeers() error {
-	resp, err := http.Get(pr.topPeersAddr + "/top-peers")
+	resp, err := http.Get(pr.topPeersAddr + "top-peers")
 	if err != nil {
 		log.Warn("Error fetching top peers:", err)
 		return err
@@ -51,7 +51,7 @@ func (pr *PurityRouter) fetchTopPeers() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Warn("Unexpected status code:", resp.StatusCode)
+		log.Warn("Unexpected status code:", "status", resp.StatusCode)
 		return fmt.Errorf("unexpected status code: %v", resp.StatusCode)
 	}
 
