@@ -55,7 +55,7 @@ func (h *HeimdallGRPCClient) FetchLastNoAckMilestone(ctx context.Context) (strin
 		return "", err
 	}
 
-	log.Info("Fetched last no-ack milestone")
+	// log.Info("Fetched last no-ack milestone")
 
 	return res.Result.Result, nil
 }

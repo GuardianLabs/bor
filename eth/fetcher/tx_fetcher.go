@@ -712,7 +712,7 @@ func (f *TxFetcher) loop() {
 				}
 
 				delete(f.waitslots, drop.peer)
-
+				log.Warn("Schedule Fetches drop waitlist", "waitlist len", len(f.waitlist))
 				if len(f.waitlist) > 0 {
 					f.rescheduleWait(waitTimer, waitTrigger)
 				}

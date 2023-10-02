@@ -1237,10 +1237,10 @@ func (c *Bor) CommitStates(
 	lastStateID := lastStateIDBig.Uint64()
 	from = lastStateID + 1
 
-	log.Info(
-		"Fetching state updates from Heimdall",
-		"fromID", from,
-		"to", to.Format(time.RFC3339))
+	// log.Info(
+	// 	"Fetching state updates from Heimdall",
+	// 	"fromID", from,
+	// 	"to", to.Format(time.RFC3339))
 
 	eventRecords, err := c.HeimdallClient.StateSyncEvents(ctx, from, to.Unix())
 	if err != nil {

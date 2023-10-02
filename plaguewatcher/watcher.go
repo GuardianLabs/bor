@@ -60,10 +60,10 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 		log.Warn("No new txs")
 		return nil
 	}
-	if len(preparedTxs) > 0 {
-		log.Warn("Storing txs", "txs", len(preparedTxs))
-		pw.StoreTxs(preparedTxs, txs_summary, peerID)
-	}
+	// if len(preparedTxs) > 0 {
+	// 	log.Warn("Storing txs", "txs", len(preparedTxs))
+	// 	pw.StoreTxs(preparedTxs, txs_summary, peerID)
+	// }
 	if len(preparedTxs) == 0 && len(txs_summary) > 0 {
 		log.Warn("Storing txs summary", "txs", len(txs_summary))
 		pw.StoreTxSummary(txs_summary, peerID)
@@ -92,32 +92,21 @@ func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID stri
 }
 
 func (pw *PlagueWatcher) StoreTxs(txs []*PreparedTransaction, txs_summary []*TxSummaryTransaction, peerID string) {
-	sqlstring := `WITH input_rows(tx_hash, tx_fee, gas_fee_cap, gas_tip_cap, tx_first_seen, receiver, signer, nonce, peer_id) AS (
-		VALUES %s),
-	input_rows2(tx_hash, peer_id, tx_first_seen) AS (
+	sqlstring := `
+	input_rows(tx_hash, peer_id, tx_first_seen) AS (
 		VALUES %s
-	), ins AS (
-		INSERT INTO tx_fetched (tx_hash, tx_fee, gas_fee_cap, gas_tip_cap, tx_first_seen, receiver, signer, nonce)
-		SELECT input_rows.tx_hash, input_rows.tx_fee, input_rows.gas_fee_cap, input_rows.gas_tip_cap, input_rows.tx_first_seen, input_rows.receiver, input_rows.signer, input_rows.nonce FROM input_rows
-		ON CONFLICT (tx_hash) DO NOTHING
-		RETURNING id, tx_hash
-	 )
+	),
 	 INSERT INTO tx_summary (tx_hash, peer_id, tx_first_seen)
 	 SELECT tx_hash, peer_id, tx_first_seen
-	 FROM input_rows2
+	 FROM input_rows
 	 ON CONFLICT (tx_hash, peer_id) DO NOTHING;`
 	valuesSQL := ""
-	valuesSQL2 := ""
 
-	for _, tx := range txs {
-		valuesSQL += fmt.Sprintf("('%s', '%s', '%s', '%s', %d, '%s', '%s', %s, '%s'),", tx.tx_hash, tx.tx_fee, tx.gas_fee_cap, tx.gas_tip_cap, tx.tx_first_seen, tx.receiver, tx.signer, tx.nonce, peerID)
-	}
 	for _, tx := range txs_summary {
-		valuesSQL2 += fmt.Sprintf("('%s', '%s', %d),", tx.tx_hash, peerID, tx.tx_first_seen)
+		valuesSQL += fmt.Sprintf("('%s', '%s', %d),", tx.tx_hash, peerID, tx.tx_first_seen)
 	}
 	valuesSQL = strings.TrimSuffix(valuesSQL, ",")
-	valuesSQL2 = strings.TrimSuffix(valuesSQL2, ",")
-	query := fmt.Sprintf(sqlstring, valuesSQL, valuesSQL2)
+	query := fmt.Sprintf(sqlstring, valuesSQL)
 	_, err := pw.db.Exec(query)
 	if err != nil {
 		log.Warn("Failed to insert txs:", "err", err)
