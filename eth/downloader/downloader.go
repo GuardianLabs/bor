@@ -786,6 +786,7 @@ func (d *Downloader) fetchHead(p *peerConnection) (head *types.Header, pivot *ty
 	mode := d.getMode()
 
 	// Request the advertised remote head block and wait for the response
+	// Choppa Choppa
 	latest, _ := p.peer.Head()
 
 	fetch := 1

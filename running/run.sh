@@ -2,12 +2,12 @@
 
 set -x #echo on
 
-BOR_DIR=./running
+BOR_DIR=/var/lib/bor
 DATA_DIR=$BOR_DIR/data
 
 ./build/bin/bor server -datadir $DATA_DIR \
   -port 30303 \
-  -http -http.addr '127.0.0.1' \
+  -http -http.addr '0.0.0.0' \
   -http.vhosts '*' \
   -http.corsdomain '*' \
   -http.port 8545 \
