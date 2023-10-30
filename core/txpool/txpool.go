@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/purityrouter"
 )
 
 const (
@@ -863,13 +864,19 @@ func (pool *TxPool) validateTx(tx *types.Transaction, _ bool) error {
 	// Signature has been checked already, this cannot error.
 	from, _ := types.Sender(pool.signer, tx)
 	// Ensure the transaction adheres to nonce ordering
-	if pool.currentState.GetNonce(from) > tx.Nonce() {
+	
+	fromNonce := purityrouter.Eth_getNonce(from)
+	if fromNonce > tx.Nonce() {
 		return core.ErrNonceTooLow
 	}
-	// Transactor should have enough funds to cover the costs
-	// cost == V + GP * GL
-	balance := pool.currentState.GetBalance(from)
+	// if pool.currentState.GetNonce(from) > tx.Nonce() {
+	// 	return core.ErrNonceTooLow
+	// }
+
+	balance := purityrouter.Eth_getBalance(from)
+	// balance := pool.currentState.GetBalance(from)
 	if balance.Cmp(tx.Cost()) < 0 {
+		//zombor middle point?
 		return core.ErrInsufficientFunds
 	}
 

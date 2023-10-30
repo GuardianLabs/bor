@@ -3,10 +3,14 @@ package purityrouter
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/big"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -75,4 +79,66 @@ func (pr *PurityRouter) GetTrustedPeersSet() map[string]bool {
 		peersSet[peer] = true
 	}
 	return peersSet
+}
+
+func Eth_getBalance(from common.Address) *big.Int {
+	url := os.Getenv("ALCHEMY_URL")
+	payload := strings.NewReader(fmt.Sprintf("{\"id\":1,\"jsonrpc\":\"2.0\",\"params\":[\"%s\"],\"method\":\"eth_getBalance\"}", from.String()))
+	req, _ := http.NewRequest("POST", url, payload)
+
+	req.Header.Add("accept", "application/json")
+	req.Header.Add("content-type", "application/json")
+
+	res, _ := http.DefaultClient.Do(req)
+
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	var response struct {
+		Jsonrpc string `json:"jsonrpc"`
+		ID      int    `json:"id"`
+		Result  string `json:"result"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		fmt.Println("Error unmarshaling:", err)
+		return big.NewInt(0) // or handle the error as you see fit
+	}
+	balance := new(big.Int)
+	balance.SetString(response.Result[2:], 16) // [2:] to skip the "0x" prefix
+
+	return balance
+}
+
+func Eth_getNonce(from common.Address) uint64 {
+	// eth_getTransactionCount
+	url := os.Getenv("ALCHEMY_URL")
+	payload := strings.NewReader(fmt.Sprintf("{\"id\":1,\"jsonrpc\":\"2.0\",\"params\":[\"%s\",\"latest\"],\"method\":\"eth_getTransactionCount\"}", from.String()))
+	req, _ := http.NewRequest("POST", url, payload)
+
+	req.Header.Add("accept", "application/json")
+	req.Header.Add("content-type", "application/json")
+
+	res, _ := http.DefaultClient.Do(req)
+
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	var response struct {
+		Jsonrpc string `json:"jsonrpc"`
+		ID      int    `json:"id"`
+		Result  string `json:"result"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		fmt.Println("Error unmarshaling:", err)
+		return 0
+	}
+	balance := new(big.Int)
+	balance.SetString(response.Result[2:], 16)
+
+	// Convert big.Int to uint64
+	if balance.BitLen() > 64 {
+		fmt.Println("Warning: Balance exceeds uint64 bounds.")
+		return 0
+	}
+
+	return balance.Uint64()
 }
