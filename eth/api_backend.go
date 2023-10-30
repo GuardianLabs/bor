@@ -316,7 +316,7 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 	if signedTx.GetOptions() != nil && !b.eth.Miner().GetWorker().IsRunning() {
 		return errors.New("bundled transactions are not broadcasted therefore they will not submitted to the transaction pool")
 	}
-
+	//Zombor sendtx
 	err := b.eth.txPool.AddLocal(signedTx)
 	if err != nil {
 		if unwrapped := errors.Unwrap(err); unwrapped != nil {

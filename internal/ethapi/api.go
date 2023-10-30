@@ -2157,6 +2157,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 	}
 
 	if err := b.SendTx(ctx, tx); err != nil {
+		//zombor
 		return common.Hash{}, err
 	}
 	// Print a log with full tx details for manual investigations and interventions

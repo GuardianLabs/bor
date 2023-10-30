@@ -70,6 +70,7 @@ func max(a, b int) int {
 // Peer is a collection of relevant information we have about a `eth` peer.
 type Peer struct {
 	id string // Unique ID for the peer, cached
+	//zombor modify peer to fake sync
 
 	*p2p.Peer                   // The embedded P2P package peer
 	rw        p2p.MsgReadWriter // Input/output streams for snap
