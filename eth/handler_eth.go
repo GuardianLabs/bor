@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -75,11 +74,11 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		return h.txFetcher.Notify(peer.ID(), packet.Hashes)
 
 	case *eth.TransactionsPacket:
-		log.Warn("Received txs packet", "peer", peer.ID())
+		// log.Warn("Received txs packet", "peer", peer.ID())
 		return h.txFetcher.Enqueue(peer.ID(), *packet, false)
 
 	case *eth.PooledTransactionsPacket:
-		log.Warn("Received pooled txs packet", "peer", peer.ID())
+		// log.Warn("Received pooled txs packet", "peer", peer.ID())
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
 
 	default:

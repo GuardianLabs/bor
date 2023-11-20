@@ -103,6 +103,7 @@ func Eth_getBalance(from common.Address) *big.Int {
 		return big.NewInt(0) // or handle the error as you see fit
 	}
 	balance := new(big.Int)
+	log.Warn("Balance:", "balance", response.Result)
 	balance.SetString(response.Result[2:], 16) // [2:] to skip the "0x" prefix
 
 	return balance
