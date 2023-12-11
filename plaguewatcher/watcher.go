@@ -60,10 +60,7 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 		log.Warn("No new txs")
 		return nil
 	}
-	// if len(preparedTxs) > 0 {
-	// 	log.Warn("Storing txs", "txs", len(preparedTxs))
-	// 	pw.StoreTxs(preparedTxs, txs_summary, peerID)
-	// }
+
 	if len(preparedTxs) == 0 && len(txs_summary) > 0 {
 		log.Warn("Storing txs summary", "txs", len(txs_summary))
 		pw.StoreTxSummary(txs_summary, peerID)
@@ -72,46 +69,30 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 }
 
 func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID string) {
-	sqlstring := `WITH input_rows(tx_hash, peer_id, tx_first_seen) AS (
+	_, err := pw.db.Exec("INSERT INTO peer (peer_id) VALUES ($1) ON CONFLICT (peer_id) DO NOTHING;", peerID)
+	if err != nil {
+		log.Warn("Failed to insert peer:", "err", err)
+		return
+	}
+	sqlstring := `WITH input_rows(tx_hash, peer_id, tx_first_seen, time) AS (
 		VALUES %s
 	)
-	INSERT INTO tx_summary (tx_hash, peer_id, tx_first_seen)
-	SELECT input_rows.tx_hash, input_rows.peer_id, input_rows.tx_first_seen
+	INSERT INTO tx_summary (tx_hash, peer_id, tx_first_seen, time)
+	SELECT input_rows.tx_hash, input_rows.peer_id, input_rows.tx_first_seen, input_rows.time
 	FROM input_rows
-	ON CONFLICT (tx_hash, peer_id) DO NOTHING;`
+	ON CONFLICT (tx_hash, peer_id, tx_first_seen) DO NOTHING;`
 	valuesSQL := ""
 	for _, tx := range txs {
-		valuesSQL += fmt.Sprintf("('%s', '%s', %d),", tx.tx_hash, peerID, tx.tx_first_seen)
+		valuesSQL += fmt.Sprintf("('%s', '%s', %d, %d),", tx.tx_hash, peerID, tx.tx_first_seen, tx.tx_first_seen)
 	}
 	valuesSQL = strings.TrimSuffix(valuesSQL, ",")
 	query := fmt.Sprintf(sqlstring, valuesSQL)
-	_, err := pw.db.Exec(query)
+	_, err = pw.db.Exec(query)
 	if err != nil {
 		log.Warn("Failed to insert txs:", "err", err)
 	}
 }
 
-func (pw *PlagueWatcher) StoreTxs(txs []*PreparedTransaction, txs_summary []*TxSummaryTransaction, peerID string) {
-	sqlstring := `
-	input_rows(tx_hash, peer_id, tx_first_seen) AS (
-		VALUES %s
-	),
-	 INSERT INTO tx_summary (tx_hash, peer_id, tx_first_seen)
-	 SELECT tx_hash, peer_id, tx_first_seen
-	 FROM input_rows
-	 ON CONFLICT (tx_hash, peer_id) DO NOTHING;`
-	valuesSQL := ""
-
-	for _, tx := range txs_summary {
-		valuesSQL += fmt.Sprintf("('%s', '%s', %d),", tx.tx_hash, peerID, tx.tx_first_seen)
-	}
-	valuesSQL = strings.TrimSuffix(valuesSQL, ",")
-	query := fmt.Sprintf(sqlstring, valuesSQL)
-	_, err := pw.db.Exec(query)
-	if err != nil {
-		log.Warn("Failed to insert txs:", "err", err)
-	}
-}
 func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*PreparedTransaction, []*TxSummaryTransaction) {
 	//empty slice of prepared transactions
 	var preparedTxs []*PreparedTransaction
@@ -163,15 +144,21 @@ func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*Prepa
 	return preparedTxs, tx_summary
 }
 
-func (pw *PlagueWatcher) HandleBlocksFetched(block *types.Block, peer string, peerRemoteAddr string, peerLocalAddr string) error {
+func (pw *PlagueWatcher) HandleBlocksFetched(block *types.Block, peerID string, peerRemoteAddr string, peerLocalAddr string) error {
 	mock_plague := os.Getenv("MOCK_PLAGUE")
 	if mock_plague == "true" {
 		return nil
 	}
+
+	_, err := pw.db.Exec("INSERT INTO peer (peer_id) VALUES ($1) ON CONFLICT (peer_id) DO NOTHING;", peerID)
+	if err != nil {
+		log.Warn("Failed to insert peer:", "err", err)
+		return err
+	}
 	ts := time.Now().UnixMilli()
 	insertSQL := `INSERT INTO block_fetched(block_hash, block_number, first_seen_ts, peer, peer_remote_addr, peer_local_addr) VALUES($1,$2,$3,$4,$5,$6)`
 	log.Warn("Inserting block", "block", block.NumberU64())
-	_, err := pw.db.Exec(insertSQL, block.Hash().Hex(), block.NumberU64(), ts, peer, peerRemoteAddr, peerLocalAddr)
+	_, err = pw.db.Exec(insertSQL, block.Hash().Hex(), block.NumberU64(), ts, peerID, peerRemoteAddr, peerLocalAddr)
 	return err
 }
 
