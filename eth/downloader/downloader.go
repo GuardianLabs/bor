@@ -565,8 +565,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 	}
 
 	height := latest.Number.Uint64()
-		//if we get height from a chain
-		//zombor sync
+
 	var origin uint64
 	if !beaconMode {
 		// In legacy mode, reach out to the network and find the ancestor
@@ -787,7 +786,6 @@ func (d *Downloader) fetchHead(p *peerConnection) (head *types.Header, pivot *ty
 	mode := d.getMode()
 
 	// Request the advertised remote head block and wait for the response
-	// Choppa Choppa zombor§
 	latest, _ := p.peer.Head()
 
 	fetch := 1

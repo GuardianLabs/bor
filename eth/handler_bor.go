@@ -33,18 +33,18 @@ func (h *ethHandler) fetchWhitelistCheckpoint(ctx context.Context, bor *bor.Bor,
 	// fetch the latest checkpoint from Heimdall
 	checkpoint, err := bor.HeimdallClient.FetchCheckpoint(ctx, -1)
 	if err != nil {
-		// log.Debug("Failed to fetch latest checkpoint for whitelisting", "err", err)
+		log.Debug("Failed to fetch latest checkpoint for whitelisting", "err", err)
 		return blockNum, blockHash, errCheckpoint
 	}
 
-	// log.Info("Got new checkpoint from heimdall", "start", checkpoint.StartBlock.Uint64(), "end", checkpoint.EndBlock.Uint64(), "rootHash", checkpoint.RootHash.String())
+	log.Info("Got new checkpoint from heimdall", "start", checkpoint.StartBlock.Uint64(), "end", checkpoint.EndBlock.Uint64(), "rootHash", checkpoint.RootHash.String())
 
 	// Verify if the checkpoint fetched can be added to the local whitelist entry or not
 	// If verified, it returns the hash of the end block of the checkpoint. If not,
 	// it will return appropriate error.
 	hash, err := verifier.verify(ctx, eth, h, checkpoint.StartBlock.Uint64(), checkpoint.EndBlock.Uint64(), checkpoint.RootHash.String()[2:], true)
 	if err != nil {
-		// log.Warn("Failed to whitelist checkpoint", "err", err)
+		log.Warn("Failed to whitelist checkpoint", "err", err)
 		return blockNum, blockHash, err
 	}
 
@@ -70,14 +70,14 @@ func (h *ethHandler) fetchWhitelistMilestone(ctx context.Context, bor *bor.Bor, 
 	}
 
 	if err != nil {
-		// log.Error("Failed to fetch latest milestone for whitelisting", "err", err)
+		log.Error("Failed to fetch latest milestone for whitelisting", "err", err)
 		return num, hash, errMilestone
 	}
 
 	num = milestone.EndBlock.Uint64()
 	hash = milestone.Hash
 
-	// log.Info("Got new milestone from heimdall", "start", milestone.StartBlock.Uint64(), "end", milestone.EndBlock.Uint64(), "hash", milestone.Hash.String())
+	log.Info("Got new milestone from heimdall", "start", milestone.StartBlock.Uint64(), "end", milestone.EndBlock.Uint64(), "hash", milestone.Hash.String())
 
 	// Verify if the milestone fetched can be added to the local whitelist entry or not
 	// If verified, it returns the hash of the end block of the milestone. If not,
@@ -104,8 +104,7 @@ func (h *ethHandler) fetchNoAckMilestone(ctx context.Context, bor *bor.Bor) (str
 	}
 
 	if err != nil {
-		// log.Error("Failed to fetch latest no-ack milestone", "err", err)
-
+		log.Error("Failed to fetch latest no-ack milestone", "err", err)
 		return milestoneID, errMilestone
 	}
 
@@ -122,12 +121,12 @@ func (h *ethHandler) fetchNoAckMilestoneByID(ctx context.Context, bor *bor.Bor, 
 
 	// fixme: handle different types of errors
 	if errors.Is(err, ErrNotInRejectedList) {
-		// log.Warn("MilestoneID not in rejected list", "milestoneID", milestoneID, "err", err)
+		log.Warn("MilestoneID not in rejected list", "milestoneID", milestoneID, "err", err)
 		return err
 	}
 
 	if err != nil {
-		// log.Error("Failed to fetch no-ack milestone by ID ", "milestoneID", milestoneID, "err", err)
+		log.Error("Failed to fetch no-ack milestone by ID ", "milestoneID", milestoneID, "err", err)
 
 		return errMilestone
 	}
