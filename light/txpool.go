@@ -369,14 +369,13 @@ func (pool *TxPool) validateTx(ctx context.Context, tx *types.Transaction) error
 	// 	return core.ErrNonceTooLow
 	// }
 
-
 	// Check the transaction doesn't exceed the current
 	// block limit gas.
 
-	// header := pool.chain.GetHeaderByHash(pool.head)
-	// if header.GasLimit < tx.Gas() {
-	// 	return txpool.ErrGasLimit
-	// }
+	header := pool.chain.GetHeaderByHash(pool.head)
+	if header.GasLimit < tx.Gas() {
+		return txpool.ErrGasLimit
+	}
 
 	// Transactions can't be negative. This may never happen
 	// using RLP decoded transactions but may occur if you create
@@ -399,7 +398,7 @@ func (pool *TxPool) validateTx(ctx context.Context, tx *types.Transaction) error
 	if tx.Gas() < gas {
 		return core.ErrIntrinsicGas
 	}
-	return currentState.Error()
+	return nil
 }
 
 // add validates a new transaction and sets its state pending if processable.
