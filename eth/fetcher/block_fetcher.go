@@ -29,9 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/plaguewatcher"
-
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 const (
@@ -159,7 +158,7 @@ func (inject *blockOrHeaderInject) hash() common.Hash {
 // BlockFetcher is responsible for accumulating block announcements from various peers
 // and scheduling them for retrieval.
 type BlockFetcher struct {
-	pw 	*plaguewatcher.PlagueWatcher
+	pw *plaguewatcher.PlagueWatcher
 	light bool // The indicator whether it's a light fetcher or normal one.
 
 	// Various event channels
@@ -203,9 +202,9 @@ type BlockFetcher struct {
 }
 
 // NewBlockFetcher creates a block fetcher to retrieve blocks based on hash announcements.
-func NewBlockFetcher(pw *plaguewatcher.PlagueWatcher, light bool, getHeader HeaderRetrievalFn, getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn, chainHeight chainHeightFn, insertHeaders headersInsertFn, insertChain chainInsertFn, dropPeer peerDropFn) *BlockFetcher {
+func NewBlockFetcher(pw *plaguewatcher.PlagueWatcher,light bool, getHeader HeaderRetrievalFn, getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn, chainHeight chainHeightFn, insertHeaders headersInsertFn, insertChain chainInsertFn, dropPeer peerDropFn) *BlockFetcher {
 	return &BlockFetcher{
-		pw: 			pw,
+		pw:             pw,
 		light:          light,
 		notify:         make(chan *blockAnnounce),
 		inject:         make(chan *blockOrHeaderInject),

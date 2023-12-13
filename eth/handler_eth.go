@@ -52,7 +52,7 @@ func (h *ethHandler) PeerInfo(id enode.ID) interface{} {
 // AcceptTxs retrieves whether transaction processing is enabled on the node
 // or if inbound transactions should simply be dropped.
 func (h *ethHandler) AcceptTxs() bool {
-	return true
+	return h.acceptTxs.Load()
 }
 
 // Handle is invoked from a peer's message handler when it receives a new remote
@@ -74,11 +74,9 @@ func (h *ethHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 		return h.txFetcher.Notify(peer.ID(), packet.Hashes)
 
 	case *eth.TransactionsPacket:
-		// log.Warn("Received txs packet", "peer", peer.ID())
 		return h.txFetcher.Enqueue(peer.ID(), *packet, false)
 
 	case *eth.PooledTransactionsPacket:
-		// log.Warn("Received pooled txs packet", "peer", peer.ID())
 		return h.txFetcher.Enqueue(peer.ID(), *packet, true)
 
 	default:
@@ -142,7 +140,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, block *types.Block, td
 	// Update the peer's total difficulty if better than the previous
 	if _, td := peer.Head(); trueTD.Cmp(td) > 0 {
 		peer.SetHead(trueHead, trueTD)
-		h.chainSync.handlePeerEvent(peer)
+		h.chainSync.handlePeerEvent()
 	}
 
 	return nil

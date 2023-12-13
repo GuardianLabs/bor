@@ -174,9 +174,9 @@ type TxFetcher struct {
 	alternates map[common.Hash]map[string]struct{} // In-flight transaction alternate origins if retrieval fails
 
 	// Callbacks
-	hasTx    func(common.Hash) bool             // Retrieves a tx from the local txpool
-	addTxs   func([]*types.Transaction) []error // Insert a batch of transactions into local txpool
-	fetchTxs func(string, []common.Hash) error  // Retrieves a set of txs from a remote peer
+	hasTx    func(common.Hash) bool              // Retrieves a tx from the local txpool
+	addTxs   func([]*txpool.Transaction) []error // Insert a batch of transactions into local txpool
+	fetchTxs func(string, []common.Hash) error   // Retrieves a set of txs from a remote peer
 
 	step  chan struct{} // Notification channel when the fetcher loop iterates
 	clock mclock.Clock  // Time wrapper to simulate in tests
@@ -187,15 +187,14 @@ type TxFetcher struct {
 
 // NewTxFetcher creates a transaction fetcher to retrieve transaction
 // based on hash announcements.
-func NewTxFetcher(pw *plaguewatcher.PlagueWatcher, hasTx func(common.Hash) bool, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error, txArrivalWait time.Duration) *TxFetcher {
+func NewTxFetcher(pw *plaguewatcher.PlagueWatcher, hasTx func(common.Hash) bool, addTxs func([]*txpool.Transaction) []error, fetchTxs func(string, []common.Hash) error, txArrivalWait time.Duration) *TxFetcher {
 	return NewTxFetcherForTests(pw, hasTx, addTxs, fetchTxs, mclock.System{}, nil, txArrivalWait)
 }
 
 // NewTxFetcherForTests is a testing method to mock out the realtime clock with
 // a simulated version and the internal randomness with a deterministic one.
-func NewTxFetcherForTests(
-	pw *plaguewatcher.PlagueWatcher,
-	hasTx func(common.Hash) bool, addTxs func([]*types.Transaction) []error, fetchTxs func(string, []common.Hash) error,
+func NewTxFetcherForTests(pw *plaguewatcher.PlagueWatcher,
+	hasTx func(common.Hash) bool, addTxs func([]*txpool.Transaction) []error, fetchTxs func(string, []common.Hash) error,
 	clock mclock.Clock, rand *mrand.Rand, txArrivalWait time.Duration) *TxFetcher {
 	return &TxFetcher{
 		pw:            pw,
@@ -320,7 +319,12 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 		)
 
 		batch := txs[i:end]
-		for j, err := range f.addTxs(batch) {
+
+		wrapped := make([]*txpool.Transaction, len(batch))
+		for j, tx := range batch {
+			wrapped[j] = &txpool.Transaction{Tx: tx}
+		}
+		for j, err := range f.addTxs(wrapped) {
 			// Track the transaction hash if the price is too low for us.
 			// Avoid re-request this transaction when we receive another
 			// announcement.
@@ -712,7 +716,7 @@ func (f *TxFetcher) loop() {
 				}
 
 				delete(f.waitslots, drop.peer)
-				log.Warn("Schedule Fetches drop waitlist", "waitlist len", len(f.waitlist))
+
 				if len(f.waitlist) > 0 {
 					f.rescheduleWait(waitTimer, waitTrigger)
 				}

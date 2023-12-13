@@ -1,6 +1,7 @@
 package statefull
 
 import (
+	"bytes"
 	"context"
 	"math"
 	"math/big"
@@ -90,7 +91,11 @@ func ApplyMessage(
 
 	success := big.NewInt(5).SetBytes(ret)
 
-	if success.Cmp(big.NewInt(0)) == 0 {
+	validatorContract := common.HexToAddress(chainConfig.Bor.ValidatorContract)
+
+	// if success == 0 and msg.To() != validatorContractAddress, log Error
+	// if msg.To() == validatorContractAddress, its committing a span and we don't get any return value
+	if success.Cmp(big.NewInt(0)) == 0 && !bytes.Equal(msg.To().Bytes(), validatorContract.Bytes()) {
 		log.Error("message execution failed on contract", "msgData", msg.Data)
 	}
 
@@ -104,7 +109,7 @@ func ApplyMessage(
 	return gasUsed, nil
 }
 
-func ApplyBorMessage(vmenv vm.EVM, msg Callmsg) (*core.ExecutionResult, error) {
+func ApplyBorMessage(vmenv *vm.EVM, msg Callmsg) (*core.ExecutionResult, error) {
 	initialGas := msg.Gas()
 
 	// Apply the transaction to the current state (included in the env)

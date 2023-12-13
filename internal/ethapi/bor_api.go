@@ -40,7 +40,7 @@ func (s *BlockChainAPI) appendRPCMarshalBorTransaction(ctx context.Context, bloc
 			formattedTxs := fields["transactions"].([]interface{})
 
 			if fullTx {
-				marshalledTx := newRPCTransaction(borTx, blockHash, blockNumber, txIndex, block.BaseFee(), s.b.ChainConfig())
+				marshalledTx := newRPCTransaction(borTx, blockHash, blockNumber, block.Time(), txIndex, block.BaseFee(), s.b.ChainConfig())
 				// newRPCTransaction calculates hash based on RLP of the transaction data.
 				// In case of bor block tx, we need simple derived tx hash (same as function argument) instead of RLP hash
 				marshalledTx.Hash = txHash
@@ -74,7 +74,11 @@ func (api *BorAPI) SendRawTransactionConditional(ctx context.Context, input hexu
 	}
 
 	currentHeader := api.b.CurrentHeader()
-	currentState, _, _ := api.b.StateAndHeaderByNumber(ctx, rpc.BlockNumber(currentHeader.Number.Int64()))
+	currentState, _, err := api.b.StateAndHeaderByNumber(ctx, rpc.BlockNumber(currentHeader.Number.Int64()))
+
+	if currentState == nil || err != nil {
+		return common.Hash{}, err
+	}
 
 	// check block number range
 	if err := currentHeader.ValidateBlockNumberOptions4337(options.BlockNumberMin, options.BlockNumberMax); err != nil {

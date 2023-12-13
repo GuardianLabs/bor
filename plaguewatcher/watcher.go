@@ -107,8 +107,8 @@ func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*Prepa
 		if _, ok := pw.cache.Get(tx.Hash().Hex()); ok {
 			continue
 		}
-		gasFeeCap := tx.GasFeeCapUint().Clone().String()
-		gasTipCap := tx.GasTipCapUint().String()
+		gasFeeCap := tx.GasFeeCap().String()
+		gasTipCap := tx.GasTipCap().String()
 		fee := strconv.FormatUint(tx.GasPrice().Uint64()*tx.Gas(), 10)
 		nonce := strconv.FormatUint(tx.Nonce(), 10)
 		signer := types.NewLondonSigner(tx.ChainId())

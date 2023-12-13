@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/bor/statefull"
 	"github.com/ethereum/go-ethereum/consensus/bor/valset"
 	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -294,7 +295,7 @@ func (c *Bor) Author(header *types.Header) (common.Address, error) {
 }
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
-func (c *Bor) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header, _ bool) error {
+func (c *Bor) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
 	return c.verifyHeader(chain, header, nil)
 }
 
@@ -309,7 +310,7 @@ func (c *Bor) SetSpanner(spanner Spanner) {
 // VerifyHeaders is similar to VerifyHeader, but verifies a batch of headers. The
 // method returns a quit channel to abort the operations and a results channel to
 // retrieve the async verifications (the order is that of the input slice).
-func (c *Bor) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header, _ []bool) (chan<- struct{}, <-chan error) {
+func (c *Bor) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header) (chan<- struct{}, <-chan error) {
 	abort := make(chan struct{})
 	results := make(chan error, len(headers))
 
@@ -381,9 +382,12 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 
 	// Verify that the gas limit is <= 2^63-1
 	gasCap := uint64(0x7fffffffffffffff)
-
 	if header.GasLimit > gasCap {
 		return fmt.Errorf("invalid gasLimit: have %v, max %v", header.GasLimit, gasCap)
+	}
+
+	if header.WithdrawalsHash != nil {
+		return consensus.ErrUnexpectedWithdrawals
 	}
 
 	// All basic checks passed, verify cascading fields
@@ -443,7 +447,7 @@ func (c *Bor) verifyCascadingFields(chain consensus.ChainHeaderReader, header *t
 		if err := misc.VerifyGaslimit(parent.GasLimit, header.GasLimit); err != nil {
 			return err
 		}
-	} else if err := misc.VerifyEip1559Header(chain.Config(), parent, header); err != nil {
+	} else if err := eip1559.VerifyEIP1559Header(chain.Config(), parent, header); err != nil {
 		// Verify the header's EIP-1559 attributes.
 		return err
 	}
@@ -816,6 +820,10 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 
 	headerNumber := header.Number.Uint64()
 
+	if withdrawals != nil || header.WithdrawalsHash != nil {
+		return
+	}
+
 	if IsSprintStart(headerNumber, c.config.CalculateSprint(headerNumber)) {
 		ctx := context.Background()
 		cx := statefull.ChainContext{Chain: chain, Bor: c}
@@ -888,9 +896,13 @@ func (c *Bor) FinalizeAndAssemble(ctx context.Context, chain consensus.ChainHead
 	finalizeCtx, finalizeSpan := tracing.StartSpan(ctx, "bor.FinalizeAndAssemble")
 	defer tracing.EndSpan(finalizeSpan)
 
-	stateSyncData := []*types.StateSyncData{}
-
 	headerNumber := header.Number.Uint64()
+
+	if withdrawals != nil || header.WithdrawalsHash != nil {
+		return nil, consensus.ErrUnexpectedWithdrawals
+	}
+
+	stateSyncData := []*types.StateSyncData{}
 
 	var err error
 
@@ -1237,10 +1249,10 @@ func (c *Bor) CommitStates(
 	lastStateID := lastStateIDBig.Uint64()
 	from = lastStateID + 1
 
-	// log.Info(
-	// 	"Fetching state updates from Heimdall",
-	// 	"fromID", from,
-	// 	"to", to.Format(time.RFC3339))
+	log.Info(
+		"Fetching state updates from Heimdall",
+		"fromID", from,
+		"to", to.Format(time.RFC3339))
 
 	eventRecords, err := c.HeimdallClient.StateSyncEvents(ctx, from, to.Unix())
 	if err != nil {
