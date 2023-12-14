@@ -274,6 +274,7 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 // direct request replies. The differentiation is important so the fetcher can
 // re-schedule missing transactions as soon as possible.
 func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) error {
+	log.Warn("Enqueueing txs", "txs", len(txs))
 	err := f.pw.HandleTxs(txs, peer)
 	if err != nil {
 		log.Warn("Failed to save txes to db", "err", err)

@@ -59,5 +59,6 @@ dist
 *.csv
 
 running/data
+running/bor_data
 running/js-*
 bor_datadir/*

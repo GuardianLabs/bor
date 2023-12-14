@@ -69,21 +69,32 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 }
 
 func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID string) {
-	_, err := pw.db.Exec("INSERT INTO peer (peer_id) VALUES ($1) ON CONFLICT (peer_id) DO NOTHING;", peerID)
+	var peer_id_integer int
+	err := pw.db.QueryRow(`WITH inserted AS (
+		INSERT INTO peer (peer_id) 
+		VALUES ($1)
+		ON CONFLICT (peer_id) DO UPDATE 
+		SET peer_id = EXCLUDED.peer_id
+		RETURNING id
+	)
+	SELECT id FROM inserted
+	UNION
+	SELECT id FROM peer WHERE peer_id = $1;
+	`, peerID).Scan(&peer_id_integer)
 	if err != nil {
 		log.Warn("Failed to insert peer:", "err", err)
 		return
 	}
-	sqlstring := `WITH input_rows(tx_hash, peer_id, tx_first_seen, time) AS (
+	sqlstring := `WITH input_rows(tx_hash, peer, tx_first_seen, time) AS (
 		VALUES %s
 	)
-	INSERT INTO tx_summary (tx_hash, peer_id, tx_first_seen, time)
-	SELECT input_rows.tx_hash, input_rows.peer_id, input_rows.tx_first_seen, input_rows.time
+	INSERT INTO tx_summary (tx_hash, peer, tx_first_seen, time)
+	SELECT input_rows.tx_hash, input_rows.peer, input_rows.tx_first_seen, input_rows.time
 	FROM input_rows
-	ON CONFLICT (tx_hash, peer_id, tx_first_seen) DO NOTHING;`
+	ON CONFLICT (tx_hash, peer, tx_first_seen) DO NOTHING;`
 	valuesSQL := ""
 	for _, tx := range txs {
-		valuesSQL += fmt.Sprintf("('%s', '%s', %d, %d),", tx.tx_hash, peerID, tx.tx_first_seen, tx.tx_first_seen)
+		valuesSQL += fmt.Sprintf("('%s', %d, %d, %d),", tx.tx_hash, peer_id_integer, tx.tx_first_seen, tx.tx_first_seen)
 	}
 	valuesSQL = strings.TrimSuffix(valuesSQL, ",")
 	query := fmt.Sprintf(sqlstring, valuesSQL)
@@ -97,6 +108,7 @@ func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*Prepa
 	//empty slice of prepared transactions
 	var preparedTxs []*PreparedTransaction
 	var tx_summary []*TxSummaryTransaction
+	log.Warn("Preparing txs", "txs", len(txs))
 	for _, tx := range txs {
 		//check if tx is already in cache
 		ts := time.Now().UnixMilli()
@@ -150,7 +162,18 @@ func (pw *PlagueWatcher) HandleBlocksFetched(block *types.Block, peerID string, 
 		return nil
 	}
 
-	_, err := pw.db.Exec("INSERT INTO peer (peer_id) VALUES ($1) ON CONFLICT (peer_id) DO NOTHING;", peerID)
+	var peer_id_integer int
+	err := pw.db.QueryRow(`WITH inserted AS (
+		INSERT INTO peer (peer_id) 
+		VALUES ($1)
+		ON CONFLICT (peer_id) DO UPDATE 
+		SET peer_id = EXCLUDED.peer_id
+		RETURNING id
+	)
+	SELECT id FROM inserted
+	UNION
+	SELECT id FROM peer WHERE peer_id = $1;
+	`, peerID).Scan(&peer_id_integer)
 	if err != nil {
 		log.Warn("Failed to insert peer:", "err", err)
 		return err
@@ -158,7 +181,11 @@ func (pw *PlagueWatcher) HandleBlocksFetched(block *types.Block, peerID string, 
 	ts := time.Now().UnixMilli()
 	insertSQL := `INSERT INTO block_fetched(block_hash, block_number, first_seen_ts, peer, peer_remote_addr, peer_local_addr) VALUES($1,$2,$3,$4,$5,$6)`
 	log.Warn("Inserting block", "block", block.NumberU64())
-	_, err = pw.db.Exec(insertSQL, block.Hash().Hex(), block.NumberU64(), ts, peerID, peerRemoteAddr, peerLocalAddr)
+	_, err = pw.db.Exec(insertSQL, block.Hash().Hex(), block.NumberU64(), ts, peer_id_integer, peerRemoteAddr, peerLocalAddr)
+	if err != nil {
+		log.Warn("Failed to insert peer:", "err", err)
+		return err
+	}
 	return err
 }
 
