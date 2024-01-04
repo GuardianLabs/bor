@@ -38,6 +38,8 @@ type PreparedTransaction struct {
 	receiver      string
 	signer        string
 	nonce         string
+	status        int
+	peer_id       string
 }
 
 type TxSummaryTransaction struct {
@@ -98,7 +100,7 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 	if err != nil {
 		return err
 	}
-	preparedTxs, txs_summary := pw.prepareTransactions(txs)
+	preparedTxs, txs_summary := pw.prepareTransactions(txs, peerID)
 	if len(preparedTxs) == 0 && len(txs_summary) == 0 {
 		log.Warn("No new txs")
 		return nil
@@ -116,9 +118,34 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 }
 
 func (pw *PlagueWatcher) StoreTxPending(txs []*PreparedTransaction, peerID string) {
-
+	// class TransactionPending:
+	// _table_ = "tx_pending"
+	// tx_hash = orm.Required(str, index=True)
+	// tx_fee = orm.Required(str)
+	// gas_fee_cap = orm.Required(str)
+	// gas_tip_cap = orm.Required(str)
+	// tx_first_seen = orm.Required(int, size=64)
+	// receiver = orm.Required(str)
+	// signer = orm.Required(str)
+	// nonce = orm.Required(str)
+	// status = orm.Required(int) # 1 - pending, 2 - confirmed, 3 - to delete
+	// peer_id = orm.Required(str)
+	sqlstring := `WITH input_rows(tx_hash, tx_fee, gas_fee_cap, gas_tip_cap, tx_first_seen, receiver, signer, nonce, status, peer_id) AS (
+		VALUES %s)
+		INSERT INTO tx_pending (tx_hash, tx_fee, gas_fee_cap, gas_tip_cap, tx_first_seen, receiver, signer, nonce, status, peer_id)
+		SELECT input_rows.tx_hash, input_rows.tx_fee, input_rows.gas_fee_cap, input_rows.gas_tip_cap, input_rows.tx_first_seen, input_rows.receiver, input_rows.signer, input_rows.nonce, input_rows.status, input_rows.peer_id
+		FROM input_rows`
+	valuesSQL := ""
+	for _, tx := range txs {
+		valuesSQL += fmt.Sprintf("('%s', '%s', '%s', '%s', %d, '%s', '%s', '%s', %d, '%s'),", tx.tx_hash, tx.tx_fee, tx.gas_fee_cap, tx.gas_tip_cap, tx.tx_first_seen, tx.receiver, tx.signer, tx.nonce, tx.status, tx.peer_id)
+	}
+	valuesSQL = strings.TrimSuffix(valuesSQL, ",")
+	query := fmt.Sprintf(sqlstring, valuesSQL)
+	_, err := pw.db.Exec(query)
+	if err != nil {
+		log.Warn("Failed to insert tx into pool:", "err", err)
+	}
 }
-
 func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID int) {
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
@@ -142,7 +169,7 @@ func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID int)
 	pw.batch = make([]*TxSummaryTransaction, 0)
 }
 
-func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*PreparedTransaction, []*TxSummaryTransaction) {
+func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction, peerID string) ([]*PreparedTransaction, []*TxSummaryTransaction) {
 	//empty slice of prepared transactions
 	var preparedTxs []*PreparedTransaction
 	var tx_summary []*TxSummaryTransaction
@@ -184,14 +211,10 @@ func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*Prepa
 			receiver:      to,
 			signer:        addr.Hex(),
 			nonce:         nonce,
+			status:        1,
+			peer_id:       peerID,
 		})
 	}
-	///Summary
-	///tx_hash string, peer_id string, tx_first_seen int64
-
-	///Fetched
-	///tx_hash string, tx_fee string, gas_fee_cap string, gas_tip_cap string, tx_first_seen int64, from string, to string, nonce string
-
 	return preparedTxs, tx_summary
 }
 
