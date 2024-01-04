@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"sync"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -18,6 +20,13 @@ import (
 type PlagueWatcher struct {
 	db    *sql.DB
 	cache *expirable.LRU[string, string]
+	peers map[string]*PeerInfo
+	batch []*TxSummaryTransaction
+	mu    sync.Mutex
+}
+
+type PeerInfo struct {
+	ID int
 }
 
 type PreparedTransaction struct {
@@ -46,8 +55,37 @@ func Init() (*PlagueWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	cache := expirable.NewLRU[string, string](1000000, nil, time.Hour*24)
-	return &PlagueWatcher{db: db, cache: cache}, nil
+	bf := make(map[string]*PeerInfo)
+	cache := expirable.NewLRU[string, string](10000000, nil, time.Hour*144)
+	batch := make([]*TxSummaryTransaction, 0)
+	return &PlagueWatcher{db: db, cache: cache, batch: batch, peers: bf}, nil
+}
+
+func (pw *PlagueWatcher) handlePeer(peerID string) (int, error) {
+	var peer_id_integer int
+	peerInfo, exists := pw.peers[peerID]
+	if !exists {
+		log.Warn("Peer not found", "peerID", peerID)
+		err := pw.db.QueryRow(`WITH inserted AS (
+			INSERT INTO peer (peer_id) 
+			VALUES ($1)
+			ON CONFLICT (peer_id) DO UPDATE 
+			SET peer_id = EXCLUDED.peer_id
+			RETURNING id
+		)
+		SELECT id FROM inserted
+		UNION
+		SELECT id FROM peer WHERE peer_id = $1;
+		`, peerID).Scan(&peer_id_integer)
+		if err != nil {
+			log.Warn("Failed to insert peer:", "err", err)
+			return 0, err
+		}
+		pw.peers[peerID] = &PeerInfo{ID: peer_id_integer}
+		return peer_id_integer, nil
+
+	}
+	return peerInfo.ID, nil
 }
 
 func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) error {
@@ -55,36 +93,35 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 	if mock_plague == "true" {
 		return nil
 	}
+
+	peerIDint, err := pw.handlePeer(peerID)
+	if err != nil {
+		return err
+	}
 	preparedTxs, txs_summary := pw.prepareTransactions(txs)
 	if len(preparedTxs) == 0 && len(txs_summary) == 0 {
 		log.Warn("No new txs")
 		return nil
 	}
 
-	if len(preparedTxs) == 0 && len(txs_summary) > 0 {
-		log.Warn("Storing txs summary", "txs", len(txs_summary))
-		pw.StoreTxSummary(txs_summary, peerID)
+	pw.mu.Lock()
+	pw.batch = append(pw.batch, txs_summary...)
+	pw.mu.Unlock()
+
+	if len(pw.batch) > 1000 {
+		log.Info("Inserting batch")
+		pw.StoreTxSummary(pw.batch, peerIDint)
 	}
 	return nil
 }
 
-func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID string) {
-	var peer_id_integer int
-	err := pw.db.QueryRow(`WITH inserted AS (
-		INSERT INTO peer (peer_id) 
-		VALUES ($1)
-		ON CONFLICT (peer_id) DO UPDATE 
-		SET peer_id = EXCLUDED.peer_id
-		RETURNING id
-	)
-	SELECT id FROM inserted
-	UNION
-	SELECT id FROM peer WHERE peer_id = $1;
-	`, peerID).Scan(&peer_id_integer)
-	if err != nil {
-		log.Warn("Failed to insert peer:", "err", err)
-		return
-	}
+func (pw *PlagueWatcher) StoreTxPending(txs []*PreparedTransaction, peerID string) {
+
+}
+
+func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID int) {
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
 	sqlstring := `WITH input_rows(tx_hash, peer, tx_first_seen, time) AS (
 		VALUES %s
 	)
@@ -94,14 +131,15 @@ func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID stri
 	ON CONFLICT (tx_hash, peer, tx_first_seen) DO NOTHING;`
 	valuesSQL := ""
 	for _, tx := range txs {
-		valuesSQL += fmt.Sprintf("('%s', %d, %d, %d),", tx.tx_hash, peer_id_integer, tx.tx_first_seen, tx.tx_first_seen)
+		valuesSQL += fmt.Sprintf("('%s', %d, %d, %d),", tx.tx_hash, peerID, tx.tx_first_seen, tx.tx_first_seen)
 	}
 	valuesSQL = strings.TrimSuffix(valuesSQL, ",")
 	query := fmt.Sprintf(sqlstring, valuesSQL)
-	_, err = pw.db.Exec(query)
+	_, err := pw.db.Exec(query)
 	if err != nil {
 		log.Warn("Failed to insert txs:", "err", err)
 	}
+	pw.batch = make([]*TxSummaryTransaction, 0)
 }
 
 func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*PreparedTransaction, []*TxSummaryTransaction) {
@@ -111,14 +149,16 @@ func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*Prepa
 	log.Warn("Preparing txs", "txs", len(txs))
 	for _, tx := range txs {
 		//check if tx is already in cache
+		if _, ok := pw.cache.Get(tx.Hash().Hex()); ok {
+			continue
+		}
 		ts := time.Now().UnixMilli()
 		tx_summary = append(tx_summary, &TxSummaryTransaction{
 			tx_hash:       tx.Hash().Hex(),
 			tx_first_seen: ts,
 		})
-		if _, ok := pw.cache.Get(tx.Hash().Hex()); ok {
-			continue
-		}
+		pw.cache.Add(tx.Hash().Hex(), tx.Hash().Hex())
+
 		gasFeeCap := tx.GasFeeCap().String()
 		gasTipCap := tx.GasTipCap().String()
 		fee := strconv.FormatUint(tx.GasPrice().Uint64()*tx.Gas(), 10)
@@ -145,7 +185,6 @@ func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction) ([]*Prepa
 			signer:        addr.Hex(),
 			nonce:         nonce,
 		})
-		pw.cache.Add(tx.Hash().Hex(), tx.Hash().Hex())
 	}
 	///Summary
 	///tx_hash string, peer_id string, tx_first_seen int64
