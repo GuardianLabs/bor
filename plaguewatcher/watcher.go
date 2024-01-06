@@ -17,6 +17,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const BATCH_SIZE = 5000
+
 type PlagueWatcher struct {
 	db    *sql.DB
 	cache *expirable.LRU[string, string]
@@ -106,11 +108,13 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 		return nil
 	}
 
+	pw.StoreTxPending(preparedTxs, peerID)
+
 	pw.mu.Lock()
 	pw.batch = append(pw.batch, txs_summary...)
 	pw.mu.Unlock()
 
-	if len(pw.batch) > 1000 {
+	if len(pw.batch) > BATCH_SIZE {
 		log.Info("Inserting batch")
 		pw.StoreTxSummary(pw.batch, peerIDint)
 	}
@@ -118,18 +122,6 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 }
 
 func (pw *PlagueWatcher) StoreTxPending(txs []*PreparedTransaction, peerID string) {
-	// class TransactionPending:
-	// _table_ = "tx_pending"
-	// tx_hash = orm.Required(str, index=True)
-	// tx_fee = orm.Required(str)
-	// gas_fee_cap = orm.Required(str)
-	// gas_tip_cap = orm.Required(str)
-	// tx_first_seen = orm.Required(int, size=64)
-	// receiver = orm.Required(str)
-	// signer = orm.Required(str)
-	// nonce = orm.Required(str)
-	// status = orm.Required(int) # 1 - pending, 2 - confirmed, 3 - to delete
-	// peer_id = orm.Required(str)
 	sqlstring := `WITH input_rows(tx_hash, tx_fee, gas_fee_cap, gas_tip_cap, tx_first_seen, receiver, signer, nonce, status, peer_id) AS (
 		VALUES %s)
 		INSERT INTO tx_pending (tx_hash, tx_fee, gas_fee_cap, gas_tip_cap, tx_first_seen, receiver, signer, nonce, status, peer_id)
