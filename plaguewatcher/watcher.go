@@ -17,15 +17,21 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const BATCH_SIZE = 5000
+const BATCH_SIZE_DEFAULT int = 5000
+const ONE_MINUTE int64 = 60000
 
+type TransactionsBatch struct {
+	transactions []*TxSummaryTransaction
+	batch_created_at int64
+}
 type PlagueWatcher struct {
 	db    *sql.DB
 	cache *expirable.LRU[string, string]
 	peers map[string]*PeerInfo
-	batch []*TxSummaryTransaction
+	batch *TransactionsBatch
 	mu    sync.Mutex
 }
+
 
 type PeerInfo struct {
 	ID int
@@ -61,7 +67,7 @@ func Init() (*PlagueWatcher, error) {
 	}
 	bf := make(map[string]*PeerInfo)
 	cache := expirable.NewLRU[string, string](10000000, nil, time.Hour*144)
-	batch := make([]*TxSummaryTransaction, 0)
+	batch := &TransactionsBatch{transactions: make([]*TxSummaryTransaction, 0), batch_created_at: time.Now().UnixMilli()}
 	return &PlagueWatcher{db: db, cache: cache, batch: batch, peers: bf}, nil
 }
 
@@ -97,7 +103,6 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 	if mock_plague == "true" {
 		return nil
 	}
-
 	peerIDint, err := pw.handlePeer(peerID)
 	if err != nil {
 		return err
@@ -111,12 +116,12 @@ func (pw *PlagueWatcher) HandleTxs(txs []*types.Transaction, peerID string) erro
 	pw.StoreTxPending(preparedTxs, peerID)
 
 	pw.mu.Lock()
-	pw.batch = append(pw.batch, txs_summary...)
+	pw.batch.transactions = append(pw.batch.transactions, txs_summary...)
 	pw.mu.Unlock()
 
-	if len(pw.batch) > BATCH_SIZE {
+	if len(pw.batch.transactions) > batchSize() || time.Now().UnixMilli() - pw.batch.batch_created_at > ONE_MINUTE && len(pw.batch.transactions) > 0 {
 		log.Info("Inserting batch")
-		pw.StoreTxSummary(pw.batch, peerIDint)
+		pw.StoreTxSummary(pw.batch.transactions, peerIDint)
 	}
 	return nil
 }
@@ -158,7 +163,8 @@ func (pw *PlagueWatcher) StoreTxSummary(txs []*TxSummaryTransaction, peerID int)
 	if err != nil {
 		log.Warn("Failed to insert txs:", "err", err)
 	}
-	pw.batch = make([]*TxSummaryTransaction, 0)
+	pw.batch.transactions = make([]*TxSummaryTransaction, 0)
+	pw.batch.batch_created_at = time.Now().UnixMilli()
 }
 
 func (pw *PlagueWatcher) prepareTransactions(txs []*types.Transaction, peerID string) ([]*PreparedTransaction, []*TxSummaryTransaction) {
@@ -271,3 +277,14 @@ func prepareAndExecQuery(db *sql.DB, queryString string) error {
 	_, err = query.Exec()
 	return err
 }
+func batchSize() int {
+	batch_size := os.Getenv("BATCH_SIZE")
+	if batch_size == "" {
+		return BATCH_SIZE_DEFAULT
+	}
+	batch_size_int, err := strconv.Atoi(batch_size)
+	if err != nil {
+		return BATCH_SIZE_DEFAULT
+	}
+	return batch_size_int
+}	
